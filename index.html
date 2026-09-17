@@ -1,1 +1,758 @@
-test
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Lunch Decision Wheel · 今日食咩好？</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            lunch: {
+              cream: "#FFF7ED",
+              peach: "#FFEDD5",
+              orange: "#F97316",
+              deep: "#C2410C",
+              mint: "#ECFDF5",
+              sky: "#EFF6FF"
+            }
+          },
+          fontFamily: {
+            sans: ['"Noto Sans TC"', "ui-sans-serif", "system-ui", "sans-serif"],
+            display: ['"Fraunces"', "Georgia", "serif"]
+          },
+          boxShadow: {
+            card: "0 18px 50px -20px rgba(194, 65, 12, 0.25)",
+            wheel: "0 25px 60px -15px rgba(234, 88, 12, 0.35)"
+          }
+        }
+      }
+    };
+  </script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700&family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet" />
+  <style>
+    body {
+      background:
+        radial-gradient(1200px 500px at 10% -10%, #fed7aa 0%, transparent 55%),
+        radial-gradient(900px 400px at 100% 0%, #fde68a 0%, transparent 50%),
+        #fff7ed;
+    }
+    .chip-active {
+      box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.2);
+    }
+    .wheel-pointer {
+      filter: drop-shadow(0 6px 8px rgba(0, 0, 0, 0.18));
+    }
+    #result-modal.show { display: flex; }
+    @keyframes pop-in {
+      from { transform: scale(0.92) translateY(12px); opacity: 0; }
+      to { transform: scale(1) translateY(0); opacity: 1; }
+    }
+    .modal-card { animation: pop-in 0.28s ease-out; }
+    .confetti {
+      position: absolute;
+      width: 10px;
+      height: 14px;
+      border-radius: 2px;
+      animation: fall 1.4s ease-in forwards;
+    }
+    @keyframes fall {
+      to { transform: translateY(140px) rotate(220deg); opacity: 0; }
+    }
+  </style>
+</head>
+<body class="font-sans text-stone-800 antialiased min-h-screen">
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 py-8 sm:py-10">
+    <header class="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4 mb-8">
+      <div>
+        <p class="text-orange-500 font-semibold tracking-wide text-sm">TEAM LUNCH</p>
+        <h1 class="font-display text-4xl sm:text-5xl text-stone-900 mt-1">Lunch Decision Wheel</h1>
+        <p class="text-stone-500 mt-2">今日食咩好？篩選餐廳、剔走缺席同事嘅黑名單，然後轉個輪盤決定。</p>
+        <p id="db-status" class="text-xs mt-2 text-stone-400"></p>
+      </div>
+      <button id="reload-data-btn" class="self-start sm:self-auto text-sm text-stone-500 hover:text-orange-600 underline underline-offset-4">
+        重新載入
+      </button>
+    </header>
+
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+      <!-- Left: controls -->
+      <section class="lg:col-span-7 space-y-6">
+        <article class="bg-white/90 backdrop-blur rounded-3xl p-5 sm:p-6 shadow-card border border-orange-100">
+          <div class="flex items-start justify-between gap-3">
+            <div>
+              <h2 class="text-lg font-bold text-stone-900">今日邊位同事冇返工？</h2>
+              <p class="text-sm text-stone-500 mt-1">缺席同事嘅黑名單餐廳會重新加入可用池。</p>
+            </div>
+            <span id="absent-count" class="text-xs font-semibold bg-orange-100 text-orange-700 px-2.5 py-1 rounded-full">0 人缺席</span>
+          </div>
+          <div id="colleague-toggles" class="flex flex-wrap gap-2 mt-4"></div>
+        </article>
+
+        <article class="bg-white/90 backdrop-blur rounded-3xl p-5 sm:p-6 shadow-card border border-orange-100">
+          <h2 class="text-lg font-bold text-stone-900">篩選</h2>
+          <div class="mt-4 grid sm:grid-cols-2 gap-5">
+            <div>
+              <p class="text-xs font-semibold uppercase tracking-wider text-stone-400 mb-2">人數 Capacity</p>
+              <div id="capacity-filters" class="flex flex-wrap gap-2"></div>
+            </div>
+            <div>
+              <p class="text-xs font-semibold uppercase tracking-wider text-stone-400 mb-2">地點 Tags（符合其中一個）</p>
+              <div id="tag-filters" class="flex flex-wrap gap-2"></div>
+            </div>
+          </div>
+        </article>
+
+        <article class="bg-white/90 backdrop-blur rounded-3xl p-5 sm:p-6 shadow-card border border-orange-100">
+          <div class="flex flex-wrap items-center gap-2">
+            <h2 class="text-lg font-bold text-stone-900">餐廳</h2>
+            <div class="flex gap-2 ml-auto">
+              <button id="toggle-edit-btn" class="text-sm font-semibold text-stone-500 hover:text-orange-600 px-3 py-1.5 rounded-full hover:bg-orange-50">
+                編輯
+              </button>
+              <button id="toggle-form-btn" class="hidden bg-orange-500 hover:bg-orange-600 text-white text-sm font-semibold px-4 py-1.5 rounded-full transition">
+                + 新增
+              </button>
+            </div>
+          </div>
+
+          <form id="add-form" class="hidden mt-4 grid sm:grid-cols-2 gap-3 p-4 rounded-2xl bg-orange-50/70 border border-orange-100">
+            <label class="sm:col-span-2 text-sm font-medium">
+              名稱
+              <input name="name" required maxlength="40" placeholder="例如：譚仔三哥" class="mt-1 w-full rounded-xl border border-orange-200 px-3 py-2 outline-none focus:ring-2 focus:ring-orange-400 bg-white" />
+            </label>
+            <label class="text-sm font-medium">
+              最多幾人
+              <select name="maxCapacity" class="mt-1 w-full rounded-xl border border-orange-200 px-3 py-2 outline-none focus:ring-2 focus:ring-orange-400 bg-white">
+                <option value="4">4 人</option>
+                <option value="6">6 人</option>
+              </select>
+            </label>
+            <div class="text-sm font-medium">
+              地點 Tags
+              <div id="form-tags" class="mt-1 flex flex-wrap gap-2"></div>
+            </div>
+            <div class="sm:col-span-2 text-sm font-medium">
+              邊位同事唔去（Blacklist）
+              <div id="form-blacklist" class="mt-1 flex flex-wrap gap-2"></div>
+            </div>
+            <div class="sm:col-span-2 flex gap-2 justify-end">
+              <button type="button" id="cancel-form-btn" class="px-4 py-2 rounded-full text-stone-600 hover:bg-white">取消</button>
+              <button type="submit" id="save-form-btn" class="px-5 py-2 rounded-full bg-stone-900 text-white font-semibold hover:bg-stone-800">儲存</button>
+            </div>
+          </form>
+
+          <div id="restaurant-list" class="mt-3"></div>
+        </article>
+      </section>
+
+      <!-- Right: wheel -->
+      <section class="lg:col-span-5 space-y-6 lg:sticky lg:top-6 self-start">
+        <article class="bg-white rounded-3xl p-4 sm:p-5 shadow-card border border-orange-100">
+          <div class="flex flex-wrap items-center gap-2 mb-2">
+            <h2 class="text-base font-bold text-stone-900">轉盤池 <span id="pool-count" class="text-xs font-semibold text-stone-400">0/0</span></h2>
+            <div class="flex gap-2 ml-auto">
+              <button id="select-all-btn" class="text-xs font-semibold text-orange-600 hover:text-orange-700">全選</button>
+              <button id="clear-wheel-btn" class="text-xs font-semibold text-stone-400 hover:text-stone-600">清空</button>
+            </div>
+          </div>
+          <div id="wheel-pool" class="flex flex-wrap gap-1.5"></div>
+        </article>
+
+        <article class="bg-gradient-to-b from-white to-orange-50 rounded-3xl p-5 sm:p-7 shadow-card border border-orange-100">
+          <div class="relative mx-auto w-[min(100%,340px)]">
+            <div class="absolute left-1/2 -top-1 -translate-x-1/2 z-10 wheel-pointer">
+              <svg width="28" height="34" viewBox="0 0 28 34" aria-hidden="true">
+                <path d="M14 34 L1 2 H27 Z" fill="#c2410c" />
+                <path d="M14 28 L6 6 H22 Z" fill="#fb923c" />
+              </svg>
+            </div>
+            <canvas id="wheel" class="w-full h-auto rounded-full shadow-wheel bg-white" width="680" height="680"></canvas>
+            <button id="spin-btn" class="absolute inset-0 m-auto h-20 w-20 rounded-full bg-stone-900 text-white font-display text-xl shadow-lg hover:bg-orange-600 hover:scale-105 transition disabled:opacity-40 disabled:hover:scale-100 disabled:hover:bg-stone-900">
+              SPIN
+            </button>
+          </div>
+          <p id="wheel-hint" class="text-center text-sm text-stone-500 mt-5">至少揀 2 間餐廳先可以轉。</p>
+        </article>
+      </section>
+    </div>
+  </div>
+
+  <div id="result-modal" class="hidden fixed inset-0 z-50 items-center justify-center bg-stone-900/40 px-4">
+    <div class="modal-card relative overflow-hidden bg-white rounded-3xl p-8 max-w-md w-full text-center shadow-2xl">
+      <div id="confetti-layer" class="pointer-events-none absolute inset-0 overflow-hidden"></div>
+      <p class="text-orange-500 font-semibold">今日就食呢間！</p>
+      <h3 id="result-name" class="font-display text-4xl text-stone-900 mt-2"></h3>
+      <p id="result-meta" class="text-stone-500 mt-3"></p>
+      <button id="close-modal-btn" class="mt-6 bg-orange-500 hover:bg-orange-600 text-white font-semibold px-6 py-2.5 rounded-full">好，去食！</button>
+    </div>
+  </div>
+
+  <script>
+    const SUPABASE_URL = "https://mfximieeegydxagwwcyo.supabase.co";
+    const SUPABASE_ANON_KEY = "sb_publishable_gupufpmvRIlP9PuftauFOg_MEJAXExO";
+    const db = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    const DEFAULT_TAGS = ["近郵局", "近駱駝漆", "近公司"];
+    const DEFAULT_COLLEAGUES = ["Irene", "Kathy", "Kita", "LokLam", "Ming", "Pion", "Sally"];
+    const WHEEL_COLORS = ["#FB7185", "#FBBF24", "#34D399", "#60A5FA", "#A78BFA", "#F97316", "#2DD4BF", "#F472B6"];
+
+    const state = {
+      restaurants: [],
+      colleagues: [...DEFAULT_COLLEAGUES],
+      absent: new Set(),
+      capacity: "any",
+      tags: new Set(),
+      selected: new Set(),
+      formTags: new Set(),
+      formBlacklist: new Set(),
+      editMode: false,
+      editingId: null,
+      rotation: 0,
+      spinning: false
+    };
+
+    const els = {
+      colleagues: document.getElementById("colleague-toggles"),
+      absentCount: document.getElementById("absent-count"),
+      capacity: document.getElementById("capacity-filters"),
+      tags: document.getElementById("tag-filters"),
+      list: document.getElementById("restaurant-list"),
+      pool: document.getElementById("wheel-pool"),
+      poolCount: document.getElementById("pool-count"),
+      form: document.getElementById("add-form"),
+      formTags: document.getElementById("form-tags"),
+      formBlacklist: document.getElementById("form-blacklist"),
+      toggleForm: document.getElementById("toggle-form-btn"),
+      toggleEdit: document.getElementById("toggle-edit-btn"),
+      saveForm: document.getElementById("save-form-btn"),
+      cancelForm: document.getElementById("cancel-form-btn"),
+      canvas: document.getElementById("wheel"),
+      spin: document.getElementById("spin-btn"),
+      hint: document.getElementById("wheel-hint"),
+      modal: document.getElementById("result-modal"),
+      resultName: document.getElementById("result-name"),
+      resultMeta: document.getElementById("result-meta"),
+      confetti: document.getElementById("confetti-layer"),
+      dbStatus: document.getElementById("db-status")
+    };
+
+    const ctx = els.canvas.getContext("2d");
+
+    function escapeHtml(value) {
+      return String(value).replace(/[&<>"']/g, (ch) => ({
+        "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+      }[ch]));
+    }
+
+    function setStatus(message, isError = false) {
+      if (!els.dbStatus) return;
+      els.dbStatus.textContent = message || "";
+      els.dbStatus.className = `text-xs mt-2 ${isError ? "text-rose-600" : "text-stone-400"}`;
+    }
+
+    function fromRow(row) {
+      return {
+        id: row.id,
+        name: row.name,
+        tags: Array.isArray(row.tags) ? row.tags : [],
+        maxCapacity: Number(row.max_capacity) || 0,
+        blacklistedBy: Array.isArray(row.blacklisted_by) ? row.blacklisted_by : []
+      };
+    }
+
+    function toRow(payload) {
+      return {
+        name: payload.name,
+        tags: payload.tags,
+        max_capacity: payload.maxCapacity,
+        blacklisted_by: payload.blacklistedBy
+      };
+    }
+
+    async function fetchRestaurants({ selectAvailable = false } = {}) {
+      const { data, error } = await db
+        .from("restaurants")
+        .select("id, created_at, name, tags, max_capacity, blacklisted_by")
+        .order("created_at", { ascending: true });
+
+      if (error) {
+        setStatus(`讀取餐廳失敗：${error.message}`, true);
+        return false;
+      }
+
+      const previous = new Set(state.selected);
+      state.restaurants = (data || []).map(fromRow);
+      const ids = new Set(state.restaurants.map((r) => r.id));
+      state.selected = new Set([...previous].filter((id) => ids.has(id)));
+      if (selectAvailable) {
+        availableRestaurants().forEach((r) => state.selected.add(r.id));
+      }
+      setStatus(state.restaurants.length ? `已同步 ${state.restaurants.length} 間餐廳` : "資料庫未有餐廳");
+      render();
+      return true;
+    }
+
+    function subscribeRestaurants() {
+      db.channel("restaurants-live")
+        .on(
+          "postgres_changes",
+          { event: "*", schema: "public", table: "restaurants" },
+          () => { fetchRestaurants(); }
+        )
+        .subscribe((status) => {
+          if (status === "SUBSCRIBED") setStatus("已連接即時同步");
+        });
+    }
+
+    function sortedColleagues() {
+      return [...state.colleagues].sort((a, b) => a.localeCompare(b, "en"));
+    }
+
+    function isAvailable(restaurant) {
+      const blockedByPresent = restaurant.blacklistedBy.filter((name) => !state.absent.has(name));
+      if (blockedByPresent.length) return false;
+      if (state.capacity !== "any" && restaurant.maxCapacity !== Number(state.capacity)) return false;
+      if (state.tags.size && !restaurant.tags.some((tag) => state.tags.has(tag))) return false;
+      return true;
+    }
+
+    function availableRestaurants() {
+      return state.restaurants.filter(isAvailable);
+    }
+
+    function selectedRestaurants() {
+      const availableIds = new Set(availableRestaurants().map((r) => r.id));
+      [...state.selected].forEach((id) => {
+        if (!availableIds.has(id)) state.selected.delete(id);
+      });
+      return state.restaurants.filter((r) => state.selected.has(r.id));
+    }
+
+    function renderColleagues() {
+      els.colleagues.innerHTML = sortedColleagues().map((name) => {
+        const on = state.absent.has(name);
+        return `<button type="button" data-colleague="${escapeHtml(name)}" class="${on
+          ? "chip-active px-3 py-1.5 rounded-full text-sm font-semibold bg-stone-800 text-white"
+          : "px-3 py-1.5 rounded-full text-sm font-medium bg-emerald-50 text-emerald-800 border border-emerald-100 hover:bg-emerald-100"}">${escapeHtml(name)}${on ? " · 缺席" : ""}</button>`;
+      }).join("");
+      els.absentCount.textContent = `${state.absent.size} 人缺席`;
+    }
+
+    function renderFilters() {
+      const caps = [
+        ["any", "不限"],
+        ["4", "4 人"],
+        ["6", "6 人"]
+      ];
+      els.capacity.innerHTML = caps.map(([value, label]) => {
+        const on = state.capacity === value;
+        return `<button type="button" data-capacity="${value}" class="${on
+          ? "chip-active px-3 py-1.5 rounded-full text-sm font-semibold bg-orange-500 text-white"
+          : "px-3 py-1.5 rounded-full text-sm font-medium bg-stone-100 text-stone-600 hover:bg-stone-200"}">${label}</button>`;
+      }).join("");
+
+      els.tags.innerHTML = DEFAULT_TAGS.map((tag) => {
+        const on = state.tags.has(tag);
+        return `<button type="button" data-tag="${escapeHtml(tag)}" class="${on
+          ? "chip-active px-3 py-1.5 rounded-full text-sm font-semibold bg-sky-500 text-white"
+          : "px-3 py-1.5 rounded-full text-sm font-medium bg-sky-50 text-sky-800 hover:bg-sky-100"}">${escapeHtml(tag)}</button>`;
+      }).join("");
+    }
+
+    function renderFormChips() {
+      els.formTags.innerHTML = DEFAULT_TAGS.map((tag) => {
+        const on = state.formTags.has(tag);
+        return `<button type="button" data-form-tag="${escapeHtml(tag)}" class="${on
+          ? "chip-active px-3 py-1.5 rounded-full text-sm font-semibold bg-sky-500 text-white"
+          : "px-3 py-1.5 rounded-full text-sm font-medium bg-white border border-stone-200 text-stone-600"}">${escapeHtml(tag)}</button>`;
+      }).join("");
+
+      els.formBlacklist.innerHTML = sortedColleagues().map((name) => {
+        const on = state.formBlacklist.has(name);
+        return `<button type="button" data-form-bl="${escapeHtml(name)}" class="${on
+          ? "chip-active px-3 py-1.5 rounded-full text-sm font-semibold bg-rose-500 text-white"
+          : "px-3 py-1.5 rounded-full text-sm font-medium bg-white border border-stone-200 text-stone-600"}">${escapeHtml(name)}</button>`;
+      }).join("");
+    }
+
+    function resetForm() {
+      state.formTags.clear();
+      state.formBlacklist.clear();
+      state.editingId = null;
+      els.form.reset();
+      els.form.classList.add("hidden");
+      if (els.saveForm) els.saveForm.textContent = "儲存";
+    }
+
+    function fillForm(restaurant) {
+      state.editingId = restaurant.id;
+      state.formTags = new Set(restaurant.tags);
+      state.formBlacklist = new Set(restaurant.blacklistedBy);
+      els.form.name.value = restaurant.name;
+      els.form.maxCapacity.value = String(restaurant.maxCapacity);
+      els.form.classList.remove("hidden");
+      if (els.saveForm) els.saveForm.textContent = "更新";
+      renderFormChips();
+    }
+
+    function renderRestaurants() {
+      els.toggleForm.classList.toggle("hidden", !state.editMode);
+      els.toggleEdit.textContent = state.editMode ? "完成" : "編輯";
+      els.toggleEdit.classList.toggle("bg-stone-900", state.editMode);
+      els.toggleEdit.classList.toggle("text-white", state.editMode);
+      els.toggleEdit.classList.toggle("hover:bg-stone-800", state.editMode);
+      els.toggleEdit.classList.toggle("text-stone-500", !state.editMode);
+
+      if (!state.restaurants.length) {
+        els.list.innerHTML = `<p class="text-xs text-stone-400 py-2">未有餐廳，撳編輯新增一間啦。</p>`;
+        return;
+      }
+
+      if (!state.editMode) {
+        els.list.innerHTML = `<div class="flex flex-wrap gap-1.5">${state.restaurants.map((r) => {
+          const available = isAvailable(r);
+          const blockers = r.blacklistedBy.filter((n) => !state.absent.has(n));
+          const title = available
+            ? `${r.maxCapacity}人 · ${(r.tags.join(" / ") || "無標籤")}`
+            : (blockers.length ? `被 ${blockers.join("、")} 拉黑` : "不符合篩選");
+          return `<span title="${escapeHtml(title)}" class="px-2.5 py-1 rounded-full text-xs font-medium ${available
+            ? "bg-stone-100 text-stone-700"
+            : "bg-stone-50 text-stone-400 line-through"}">${escapeHtml(r.name)} · ${r.maxCapacity}人</span>`;
+        }).join("")}</div>`;
+        return;
+      }
+
+      els.list.innerHTML = `<div class="space-y-1">${state.restaurants.map((r) => {
+        const available = isAvailable(r);
+        const blockers = r.blacklistedBy.filter((n) => !state.absent.has(n));
+        const reason = !available
+          ? (blockers.length ? `被 ${blockers.join("、")} 拉黑` : "不符合篩選")
+          : "";
+        const editing = state.editingId === r.id;
+        return `
+          <div class="flex items-center gap-2 rounded-xl px-2 py-1.5 ${editing ? "bg-orange-50" : available ? "hover:bg-stone-50" : "opacity-60"}">
+            <div class="min-w-0 flex-1">
+              <p class="text-sm font-medium text-stone-900 truncate">${escapeHtml(r.name)} <span class="text-xs font-normal text-stone-400">${r.maxCapacity}人 · ${r.tags.map(escapeHtml).join("/") || "無標籤"}</span></p>
+              <p class="text-[11px] text-stone-400 truncate">${r.blacklistedBy.length ? `黑名單：${r.blacklistedBy.map(escapeHtml).join("、")}` : "無黑名單"}${reason ? ` · ${escapeHtml(reason)}` : ""}</p>
+            </div>
+            <button type="button" data-edit="${escapeHtml(r.id)}" class="text-xs font-semibold text-orange-600 hover:text-orange-700 shrink-0">改</button>
+            <button type="button" data-remove="${escapeHtml(r.id)}" class="text-xs font-semibold text-stone-400 hover:text-rose-600 shrink-0">刪</button>
+          </div>`;
+      }).join("")}</div>`;
+    }
+
+    function renderPool() {
+      const available = availableRestaurants();
+      const selectedCount = available.filter((r) => state.selected.has(r.id)).length;
+      if (els.poolCount) els.poolCount.textContent = `${selectedCount}/${available.length}`;
+      if (!available.length) {
+        els.pool.innerHTML = `<p class="text-xs text-stone-400 py-1">冇餐廳符合而家嘅篩選／黑名單條件。</p>`;
+        return;
+      }
+      els.pool.innerHTML = available.map((r) => {
+        const on = state.selected.has(r.id);
+        return `<button type="button" data-select="${escapeHtml(r.id)}" class="${on
+          ? "chip-active px-2.5 py-1 rounded-full text-xs font-semibold bg-orange-500 text-white"
+          : "px-2.5 py-1 rounded-full text-xs font-medium bg-stone-100 text-stone-600 hover:bg-stone-200"}">${escapeHtml(r.name)} · ${r.maxCapacity}人</button>`;
+      }).join("");
+    }
+
+    function drawWheel() {
+      const canvas = els.canvas;
+      const dpr = window.devicePixelRatio || 1;
+      const cssSize = canvas.clientWidth || 340;
+      canvas.width = cssSize * dpr;
+      canvas.height = cssSize * dpr;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+      const size = cssSize;
+      const cx = size / 2;
+      const cy = size / 2;
+      const radius = size / 2 - 8;
+      const items = selectedRestaurants();
+
+      ctx.clearRect(0, 0, size, size);
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.rotate(state.rotation);
+
+      if (!items.length) {
+        ctx.beginPath();
+        ctx.arc(0, 0, radius, 0, Math.PI * 2);
+        ctx.fillStyle = "#fff7ed";
+        ctx.fill();
+        ctx.strokeStyle = "#fdba74";
+        ctx.lineWidth = 10;
+        ctx.stroke();
+        ctx.rotate(-state.rotation);
+        ctx.fillStyle = "#a8a29e";
+        ctx.font = "600 16px 'Noto Sans TC', sans-serif";
+        ctx.textAlign = "center";
+        ctx.fillText("未有餐廳入池", 0, 4);
+        ctx.restore();
+        return;
+      }
+
+      const slice = (Math.PI * 2) / items.length;
+      items.forEach((item, i) => {
+        const start = i * slice - Math.PI / 2;
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        ctx.arc(0, 0, radius, start, start + slice);
+        ctx.closePath();
+        ctx.fillStyle = WHEEL_COLORS[i % WHEEL_COLORS.length];
+        ctx.fill();
+        ctx.strokeStyle = "rgba(255,255,255,0.75)";
+        ctx.lineWidth = 2;
+        ctx.stroke();
+
+        ctx.save();
+        ctx.rotate(start + slice / 2);
+        ctx.fillStyle = "#1c1917";
+        ctx.font = `700 ${items.length > 6 ? 11 : 13}px 'Noto Sans TC', sans-serif`;
+        ctx.textAlign = "right";
+        ctx.textBaseline = "middle";
+        const label = item.name.length > 8 ? item.name.slice(0, 8) + "…" : item.name;
+        ctx.fillText(label, radius - 18, 0);
+        ctx.restore();
+      });
+
+      ctx.beginPath();
+      ctx.arc(0, 0, radius, 0, Math.PI * 2);
+      ctx.strokeStyle = "#fff";
+      ctx.lineWidth = 12;
+      ctx.stroke();
+      ctx.restore();
+
+      // outer ring already drawn; hub is the SPIN button overlay
+    }
+
+    function winnerIndex(itemCount, rotation) {
+      const slice = (Math.PI * 2) / itemCount;
+      const normalized = ((-rotation) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2);
+      return Math.floor(normalized / slice) % itemCount;
+    }
+
+    function easeOutCubic(t) {
+      return 1 - Math.pow(1 - t, 3);
+    }
+
+    function spin() {
+      const items = selectedRestaurants();
+      if (state.spinning || items.length < 2) return;
+
+      state.spinning = true;
+      els.spin.disabled = true;
+      const extraTurns = 5 + Math.random() * 3;
+      const target = extraTurns * Math.PI * 2 + Math.random() * Math.PI * 2;
+      const start = state.rotation;
+      const duration = 4200;
+      const t0 = performance.now();
+
+      function frame(now) {
+        const t = Math.min(1, (now - t0) / duration);
+        state.rotation = start + target * easeOutCubic(t);
+        drawWheel();
+        if (t < 1) {
+          requestAnimationFrame(frame);
+        } else {
+          const winner = items[winnerIndex(items.length, state.rotation)];
+          state.spinning = false;
+          els.spin.disabled = false;
+          showResult(winner);
+        }
+      }
+      requestAnimationFrame(frame);
+    }
+
+    function showResult(restaurant) {
+      els.resultName.textContent = restaurant.name;
+      const tags = restaurant.tags.join(" · ") || "無標籤";
+      els.resultMeta.textContent = `${restaurant.maxCapacity} 人桌 · ${tags}`;
+      els.modal.classList.remove("hidden");
+      els.modal.classList.add("show", "flex");
+      els.confetti.innerHTML = "";
+      for (let i = 0; i < 24; i++) {
+        const bit = document.createElement("span");
+        bit.className = "confetti";
+        bit.style.left = `${8 + Math.random() * 84}%`;
+        bit.style.top = `${-10 + Math.random() * 20}px`;
+        bit.style.background = WHEEL_COLORS[i % WHEEL_COLORS.length];
+        bit.style.animationDelay = `${Math.random() * 0.3}s`;
+        els.confetti.appendChild(bit);
+      }
+    }
+
+    function closeModal() {
+      els.modal.classList.add("hidden");
+      els.modal.classList.remove("show", "flex");
+    }
+
+    function render() {
+      selectedRestaurants();
+      renderColleagues();
+      renderFilters();
+      renderFormChips();
+      renderRestaurants();
+      renderPool();
+      const count = selectedRestaurants().length;
+      els.spin.disabled = state.spinning || count < 2;
+      els.hint.textContent = count < 2
+        ? "至少揀 2 間餐廳先可以轉。"
+        : `轉盤已有 ${count} 間餐廳，撳 SPIN 決定今日午餐。`;
+      drawWheel();
+    }
+
+    els.colleagues.addEventListener("click", (e) => {
+      const btn = e.target.closest("[data-colleague]");
+      if (!btn) return;
+      const name = btn.dataset.colleague;
+      if (state.absent.has(name)) state.absent.delete(name);
+      else state.absent.add(name);
+      render();
+    });
+
+    els.capacity.addEventListener("click", (e) => {
+      const btn = e.target.closest("[data-capacity]");
+      if (!btn) return;
+      state.capacity = btn.dataset.capacity;
+      render();
+    });
+
+    els.tags.addEventListener("click", (e) => {
+      const btn = e.target.closest("[data-tag]");
+      if (!btn) return;
+      const tag = btn.dataset.tag;
+      if (state.tags.has(tag)) state.tags.delete(tag);
+      else state.tags.add(tag);
+      render();
+    });
+
+    els.list.addEventListener("click", async (e) => {
+      const removeBtn = e.target.closest("[data-remove]");
+      const editBtn = e.target.closest("[data-edit]");
+      if (removeBtn) {
+        const id = removeBtn.dataset.remove;
+        const { error } = await db.from("restaurants").delete().eq("id", id);
+        if (error) {
+          setStatus(`刪除失敗：${error.message}`, true);
+          return;
+        }
+        state.restaurants = state.restaurants.filter((r) => r.id !== id);
+        state.selected.delete(id);
+        if (state.editingId === id) resetForm();
+        render();
+        return;
+      }
+      if (editBtn) {
+        const restaurant = state.restaurants.find((r) => r.id === editBtn.dataset.edit);
+        if (restaurant) fillForm(restaurant);
+      }
+    });
+
+    els.pool.addEventListener("click", (e) => {
+      const chip = e.target.closest("[data-select]");
+      if (!chip) return;
+      const id = chip.dataset.select;
+      if (state.selected.has(id)) state.selected.delete(id);
+      else state.selected.add(id);
+      render();
+    });
+
+    els.formTags.addEventListener("click", (e) => {
+      const btn = e.target.closest("[data-form-tag]");
+      if (!btn) return;
+      const tag = btn.dataset.formTag;
+      if (state.formTags.has(tag)) state.formTags.delete(tag);
+      else state.formTags.add(tag);
+      renderFormChips();
+    });
+
+    els.formBlacklist.addEventListener("click", (e) => {
+      const btn = e.target.closest("[data-form-bl]");
+      if (!btn) return;
+      const name = btn.dataset.formBl;
+      if (state.formBlacklist.has(name)) state.formBlacklist.delete(name);
+      else state.formBlacklist.add(name);
+      renderFormChips();
+    });
+
+    els.toggleEdit.addEventListener("click", () => {
+      state.editMode = !state.editMode;
+      if (!state.editMode) resetForm();
+      render();
+    });
+    els.toggleForm.addEventListener("click", () => {
+      if (!els.form.classList.contains("hidden") && !state.editingId) {
+        resetForm();
+        return;
+      }
+      state.editingId = null;
+      state.formTags.clear();
+      state.formBlacklist.clear();
+      els.form.reset();
+      els.form.classList.remove("hidden");
+      if (els.saveForm) els.saveForm.textContent = "儲存";
+      renderFormChips();
+    });
+    els.cancelForm.addEventListener("click", resetForm);
+
+    els.form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const data = new FormData(els.form);
+      const name = String(data.get("name") || "").trim();
+      if (!name) return;
+      const payload = {
+        name,
+        tags: [...state.formTags],
+        maxCapacity: Number(data.get("maxCapacity")),
+        blacklistedBy: [...state.formBlacklist]
+      };
+      const row = toRow(payload);
+      if (state.editingId) {
+        const { error } = await db.from("restaurants").update(row).eq("id", state.editingId);
+        if (error) {
+          setStatus(`更新失敗：${error.message}`, true);
+          return;
+        }
+      } else {
+        const { error } = await db.from("restaurants").insert(row);
+        if (error) {
+          setStatus(`新增失敗：${error.message}`, true);
+          return;
+        }
+      }
+      resetForm();
+      await fetchRestaurants();
+    });
+
+    document.getElementById("select-all-btn").addEventListener("click", () => {
+      availableRestaurants().forEach((r) => state.selected.add(r.id));
+      render();
+    });
+    document.getElementById("clear-wheel-btn").addEventListener("click", () => {
+      state.selected.clear();
+      render();
+    });
+    document.getElementById("reload-data-btn").addEventListener("click", () => {
+      fetchRestaurants({ selectAvailable: true });
+    });
+
+    els.spin.addEventListener("click", spin);
+    document.getElementById("close-modal-btn").addEventListener("click", closeModal);
+    els.modal.addEventListener("click", (e) => {
+      if (e.target === els.modal) closeModal();
+    });
+    window.addEventListener("resize", drawWheel);
+
+    render();
+    fetchRestaurants({ selectAvailable: true }).then(() => subscribeRestaurants());
+  </script>
+</body>
+</html>
