@@ -279,6 +279,28 @@
       els.dbStatus.className = `text-xs mt-2 ${isError ? "text-rose-600" : "text-stone-400"}`;
     }
 
+    // 排序函式：英文字母 (A-Z) 在先，中文筆劃 (少至多) 在後
+    function sortRestaurants(list) {
+      return [...list].sort((a, b) => {
+        const nameA = String(a.name || "").trim();
+        const nameB = String(b.name || "").trim();
+        const isEnglishA = /^[a-zA-Z0-9]/.test(nameA);
+        const isEnglishB = /^[a-zA-Z0-9]/.test(nameB);
+
+        // 英文排中文前
+        if (isEnglishA && !isEnglishB) return -1;
+        if (!isEnglishA && isEnglishB) return 1;
+
+        // 兩者皆英文：按字母 A-Z
+        if (isEnglishA && isEnglishB) {
+          return nameA.localeCompare(nameB, "en", { sensitivity: "base" });
+        }
+
+        // 兩者皆中文：按繁體筆劃排序
+        return nameA.localeCompare(nameB, "zh-Hant-HK-u-co-stroke");
+      });
+    }
+
     function fromRow(row) {
       return {
         id: row.id,
@@ -301,8 +323,7 @@
     async function fetchRestaurants({ selectAvailable = false } = {}) {
       const { data, error } = await db
         .from("restaurants")
-        .select("id, created_at, name, tags, max_capacity, blacklisted_by")
-        .order("created_at", { ascending: true });
+        .select("id, created_at, name, tags, max_capacity, blacklisted_by");
 
       if (error) {
         setStatus(`讀取餐廳失敗：${error.message}`, true);
@@ -310,7 +331,8 @@
       }
 
       const previous = new Set(state.selected);
-      state.restaurants = (data || []).map(fromRow);
+      // 載入後自動進行字母與筆劃排序
+      state.restaurants = sortRestaurants((data || []).map(fromRow));
       const ids = new Set(state.restaurants.map((r) => r.id));
       state.selected = new Set([...previous].filter((id) => ids.has(id)));
       if (selectAvailable) {
@@ -337,12 +359,9 @@
       const blockedByPresent = restaurant.blacklistedBy.filter((name) => !state.absent.has(name));
       if (blockedByPresent.length) return false;
       
-      // 核心人數/挑戰過濾邏輯：
       if (state.capacity === "only4") {
-        // 挑戰模式：只留專屬於 4人或以下 的小店 (排除不限人數和 6人以上)
         if (restaurant.maxCapacity !== 4) return false;
       } else if (state.capacity !== "any") {
-        // 一般模式：只要餐廳上限 >= 今日人數，或是 0 (不限) 就可以去
         const currentPeople = Number(state.capacity);
         if (restaurant.maxCapacity !== 0 && restaurant.maxCapacity < currentPeople) {
           return false;
