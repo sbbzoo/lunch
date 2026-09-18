@@ -47,22 +47,29 @@
     }
     .wheel-pointer {
       filter: drop-shadow(0 6px 8px rgba(0, 0, 0, 0.18));
+      transition: transform 0.05s ease;
+    }
+    .wheel-pointer.tick {
+      transform: translateX(-50%) scale(1.15) translateY(-2px);
     }
     #result-modal.show { display: flex; }
     @keyframes pop-in {
-      from { transform: scale(0.92) translateY(12px); opacity: 0; }
+      from { transform: scale(0.9) translateY(20px); opacity: 0; }
       to { transform: scale(1) translateY(0); opacity: 1; }
     }
-    .modal-card { animation: pop-in 0.28s ease-out; }
+    .modal-card { animation: pop-in 0.3s cubic-bezier(0.34, 1.56, 0.64, 1); }
     .confetti {
-      position: absolute;
+      position: fixed;
       width: 10px;
       height: 14px;
       border-radius: 2px;
-      animation: fall 1.4s ease-in forwards;
+      pointer-events: none;
+      z-index: 60;
+      animation: fall 1.8s ease-in forwards;
     }
     @keyframes fall {
-      to { transform: translateY(140px) rotate(220deg); opacity: 0; }
+      0% { transform: translateY(-20px) rotate(0deg); opacity: 1; }
+      100% { transform: translateY(100vh) rotate(720deg); opacity: 0; }
     }
   </style>
 </head>
@@ -112,7 +119,7 @@
           <div class="flex flex-wrap items-center gap-2">
             <h2 class="text-lg font-bold text-stone-900">餐廳</h2>
             <div class="flex gap-2 ml-auto">
-              <button id="toggle-edit-btn" class="text-sm font-semibold text-stone-500 hover:text-orange-600 px-3 py-1.5 rounded-full hover:bg-orange-50">
+              <button id="toggle-edit-btn" class="text-sm font-semibold text-stone-500 hover:text-orange-600 px-3 py-1.5 rounded-full hover:bg-orange-50 transition">
                 編輯
               </button>
               <button id="toggle-form-btn" class="hidden bg-orange-500 hover:bg-orange-600 text-white text-sm font-semibold px-4 py-1.5 rounded-full transition">
@@ -120,32 +127,6 @@
               </button>
             </div>
           </div>
-
-          <form id="add-form" class="hidden mt-4 grid sm:grid-cols-2 gap-3 p-4 rounded-2xl bg-orange-50/70 border border-orange-100">
-            <label class="sm:col-span-2 text-sm font-medium">
-              名稱
-              <input name="name" required maxlength="40" placeholder="例如：譚仔三哥" class="mt-1 w-full rounded-xl border border-orange-200 px-3 py-2 outline-none focus:ring-2 focus:ring-orange-400 bg-white" />
-            </label>
-            <label class="text-sm font-medium">
-              最多幾人
-              <select name="maxCapacity" class="mt-1 w-full rounded-xl border border-orange-200 px-3 py-2 outline-none focus:ring-2 focus:ring-orange-400 bg-white">
-                <option value="4">4 人</option>
-                <option value="6">6 人</option>
-              </select>
-            </label>
-            <div class="text-sm font-medium">
-              地點 Tags
-              <div id="form-tags" class="mt-1 flex flex-wrap gap-2"></div>
-            </div>
-            <div class="sm:col-span-2 text-sm font-medium">
-              邊位同事唔去（Blacklist）
-              <div id="form-blacklist" class="mt-1 flex flex-wrap gap-2"></div>
-            </div>
-            <div class="sm:col-span-2 flex gap-2 justify-end">
-              <button type="button" id="cancel-form-btn" class="px-4 py-2 rounded-full text-stone-600 hover:bg-white">取消</button>
-              <button type="submit" id="save-form-btn" class="px-5 py-2 rounded-full bg-stone-900 text-white font-semibold hover:bg-stone-800">儲存</button>
-            </div>
-          </form>
 
           <div id="restaurant-list" class="mt-3"></div>
         </article>
@@ -166,14 +147,14 @@
 
         <article class="bg-gradient-to-b from-white to-orange-50 rounded-3xl p-5 sm:p-7 shadow-card border border-orange-100">
           <div class="relative mx-auto w-[min(100%,340px)]">
-            <div class="absolute left-1/2 -top-1 -translate-x-1/2 z-10 wheel-pointer">
+            <div id="wheel-pointer-el" class="absolute left-1/2 -top-1 -translate-x-1/2 z-10 wheel-pointer">
               <svg width="28" height="34" viewBox="0 0 28 34" aria-hidden="true">
                 <path d="M14 34 L1 2 H27 Z" fill="#c2410c" />
                 <path d="M14 28 L6 6 H22 Z" fill="#fb923c" />
               </svg>
             </div>
             <canvas id="wheel" class="w-full h-auto rounded-full shadow-wheel bg-white" width="680" height="680"></canvas>
-            <button id="spin-btn" class="absolute inset-0 m-auto h-20 w-20 rounded-full bg-stone-900 text-white font-display text-xl shadow-lg hover:bg-orange-600 hover:scale-105 transition disabled:opacity-40 disabled:hover:scale-100 disabled:hover:bg-stone-900">
+            <button id="spin-btn" class="absolute inset-0 m-auto h-20 w-20 rounded-full bg-stone-900 text-white font-display text-xl shadow-lg hover:bg-orange-600 hover:scale-105 active:scale-95 transition disabled:opacity-40 disabled:hover:scale-100 disabled:hover:bg-stone-900">
               SPIN
             </button>
           </div>
@@ -185,11 +166,10 @@
 
   <div id="result-modal" class="hidden fixed inset-0 z-50 items-center justify-center bg-stone-900/40 px-4">
     <div class="modal-card relative overflow-hidden bg-white rounded-3xl p-8 max-w-md w-full text-center shadow-2xl">
-      <div id="confetti-layer" class="pointer-events-none absolute inset-0 overflow-hidden"></div>
-      <p class="text-orange-500 font-semibold">今日就食呢間！</p>
-      <h3 id="result-name" class="font-display text-4xl text-stone-900 mt-2"></h3>
-      <p id="result-meta" class="text-stone-500 mt-3"></p>
-      <button id="close-modal-btn" class="mt-6 bg-orange-500 hover:bg-orange-600 text-white font-semibold px-6 py-2.5 rounded-full">好，去食！</button>
+      <p class="text-orange-500 font-semibold tracking-wide text-sm">🎉 今日就食呢間！</p>
+      <h3 id="result-name" class="font-display text-3xl sm:text-4xl text-stone-900 mt-3"></h3>
+      <p id="result-meta" class="text-stone-500 mt-3 text-sm sm:text-base"></p>
+      <button id="close-modal-btn" class="mt-8 w-full sm:w-auto bg-orange-500 hover:bg-orange-600 text-white font-semibold px-8 py-3 rounded-full shadow-lg hover:shadow-orange-200 transition">好，去食！</button>
     </div>
   </div>
 
@@ -202,6 +182,65 @@
     const DEFAULT_COLLEAGUES = ["Irene", "Kathy", "Kita", "LokLam", "Ming", "Pion", "Sally"];
     const WHEEL_COLORS = ["#FB7185", "#FBBF24", "#34D399", "#60A5FA", "#A78BFA", "#F97316", "#2DD4BF", "#F472B6"];
 
+    // 音效合成器 (Web Audio API)
+    class SoundEffects {
+      constructor() {
+        this.ctx = null;
+      }
+
+      init() {
+        if (!this.ctx) {
+          this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+        }
+      }
+
+      playTick() {
+        this.init();
+        if (!this.ctx) return;
+        
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(600, this.ctx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(150, this.ctx.currentTime + 0.04);
+        
+        gain.gain.setValueAtTime(0.15, this.ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.04);
+        
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        
+        osc.start();
+        osc.stop(this.ctx.currentTime + 0.04);
+      }
+
+      playWin() {
+        this.init();
+        if (!this.ctx) return;
+
+        const now = this.ctx.currentTime;
+        const notes = [261.63, 329.63, 392.00, 523.25]; // C5, E5, G5, C6
+        notes.forEach((freq, idx) => {
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = 'sine';
+          osc.frequency.value = freq;
+          
+          gain.gain.setValueAtTime(0, now + idx * 0.08);
+          gain.gain.linearRampToValueAtTime(0.2, now + idx * 0.08 + 0.02);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.08 + 0.3);
+          
+          osc.connect(gain);
+          gain.connect(this.ctx.destination);
+          
+          osc.start(now + idx * 0.08);
+          osc.stop(now + idx * 0.08 + 0.3);
+        });
+      }
+    }
+
+    const sounds = new SoundEffects();
+
     const state = {
       restaurants: [],
       colleagues: [...DEFAULT_COLLEAGUES],
@@ -209,12 +248,13 @@
       capacity: "any",
       tags: new Set(),
       selected: new Set(),
-      formTags: new Set(),
-      formBlacklist: new Set(),
       editMode: false,
       editingId: null,
+      formTags: new Set(),
+      formBlacklist: new Set(),
       rotation: 0,
-      spinning: false
+      spinning: false,
+      lastTickSector: -1
     };
 
     const els = {
@@ -225,21 +265,16 @@
       list: document.getElementById("restaurant-list"),
       pool: document.getElementById("wheel-pool"),
       poolCount: document.getElementById("pool-count"),
-      form: document.getElementById("add-form"),
-      formTags: document.getElementById("form-tags"),
-      formBlacklist: document.getElementById("form-blacklist"),
       toggleForm: document.getElementById("toggle-form-btn"),
       toggleEdit: document.getElementById("toggle-edit-btn"),
-      saveForm: document.getElementById("save-form-btn"),
-      cancelForm: document.getElementById("cancel-form-btn"),
       canvas: document.getElementById("wheel"),
       spin: document.getElementById("spin-btn"),
       hint: document.getElementById("wheel-hint"),
       modal: document.getElementById("result-modal"),
       resultName: document.getElementById("result-name"),
       resultMeta: document.getElementById("result-meta"),
-      confetti: document.getElementById("confetti-layer"),
-      dbStatus: document.getElementById("db-status")
+      dbStatus: document.getElementById("db-status"),
+      pointer: document.getElementById("wheel-pointer-el")
     };
 
     const ctx = els.canvas.getContext("2d");
@@ -365,40 +400,54 @@
       }).join("");
     }
 
-    function renderFormChips() {
-      els.formTags.innerHTML = DEFAULT_TAGS.map((tag) => {
+    function renderInlineFormTemplate(r = {}) {
+      const isNew = !r.id;
+      const nameVal = r.name || "";
+      const capVal = r.maxCapacity || 4;
+
+      const tagChips = DEFAULT_TAGS.map((tag) => {
         const on = state.formTags.has(tag);
         return `<button type="button" data-form-tag="${escapeHtml(tag)}" class="${on
-          ? "chip-active px-3 py-1.5 rounded-full text-sm font-semibold bg-sky-500 text-white"
-          : "px-3 py-1.5 rounded-full text-sm font-medium bg-white border border-stone-200 text-stone-600"}">${escapeHtml(tag)}</button>`;
+          ? "chip-active px-2.5 py-1 rounded-full text-xs font-semibold bg-sky-500 text-white"
+          : "px-2.5 py-1 rounded-full text-xs font-medium bg-white border border-stone-200 text-stone-600"}">${escapeHtml(tag)}</button>`;
       }).join("");
 
-      els.formBlacklist.innerHTML = sortedColleagues().map((name) => {
-        const on = state.formBlacklist.has(name);
-        return `<button type="button" data-form-bl="${escapeHtml(name)}" class="${on
-          ? "chip-active px-3 py-1.5 rounded-full text-sm font-semibold bg-rose-500 text-white"
-          : "px-3 py-1.5 rounded-full text-sm font-medium bg-white border border-stone-200 text-stone-600"}">${escapeHtml(name)}</button>`;
+      const blChips = sortedColleagues().map((colleague) => {
+        const on = state.formBlacklist.has(colleague);
+        return `<button type="button" data-form-bl="${escapeHtml(colleague)}" class="${on
+          ? "chip-active px-2.5 py-1 rounded-full text-xs font-semibold bg-rose-500 text-white"
+          : "px-2.5 py-1 rounded-full text-xs font-medium bg-white border border-stone-200 text-stone-600"}">${escapeHtml(colleague)}</button>`;
       }).join("");
-    }
 
-    function resetForm() {
-      state.formTags.clear();
-      state.formBlacklist.clear();
-      state.editingId = null;
-      els.form.reset();
-      els.form.classList.add("hidden");
-      if (els.saveForm) els.saveForm.textContent = "儲存";
-    }
-
-    function fillForm(restaurant) {
-      state.editingId = restaurant.id;
-      state.formTags = new Set(restaurant.tags);
-      state.formBlacklist = new Set(restaurant.blacklistedBy);
-      els.form.name.value = restaurant.name;
-      els.form.maxCapacity.value = String(restaurant.maxCapacity);
-      els.form.classList.remove("hidden");
-      if (els.saveForm) els.saveForm.textContent = "更新";
-      renderFormChips();
+      return `
+        <form id="inline-edit-form" class="my-2 p-4 rounded-2xl bg-orange-50/90 border border-orange-200 space-y-3 shadow-sm">
+          <div class="grid sm:grid-cols-2 gap-3">
+            <label class="sm:col-span-1 text-xs font-semibold text-stone-700">
+              名稱
+              <input name="name" required maxlength="40" value="${escapeHtml(nameVal)}" placeholder="例如：譚仔三哥" class="mt-1 w-full rounded-xl border border-orange-200 px-3 py-1.5 text-sm outline-none focus:ring-2 focus:ring-orange-400 bg-white" />
+            </label>
+            <label class="text-xs font-semibold text-stone-700">
+              最多幾人
+              <select name="maxCapacity" class="mt-1 w-full rounded-xl border border-orange-200 px-3 py-1.5 text-sm outline-none focus:ring-2 focus:ring-orange-400 bg-white">
+                <option value="4" ${capVal === 4 ? "selected" : ""}>4 人</option>
+                <option value="6" ${capVal === 6 ? "selected" : ""}>6 人</option>
+              </select>
+            </label>
+          </div>
+          <div>
+            <span class="text-xs font-semibold text-stone-700">地點 Tags</span>
+            <div class="mt-1 flex flex-wrap gap-1.5">${tagChips}</div>
+          </div>
+          <div>
+            <span class="text-xs font-semibold text-stone-700">邊位同事唔去（Blacklist）</span>
+            <div class="mt-1 flex flex-wrap gap-1.5">${blChips}</div>
+          </div>
+          <div class="flex gap-2 justify-end pt-1">
+            <button type="button" id="cancel-inline-btn" class="px-3.5 py-1.5 text-xs rounded-full text-stone-600 hover:bg-white border border-stone-200">取消</button>
+            <button type="submit" class="px-4 py-1.5 text-xs rounded-full bg-stone-900 text-white font-semibold hover:bg-stone-800">${isNew ? "新增" : "更新"}</button>
+          </div>
+        </form>
+      `;
     }
 
     function renderRestaurants() {
@@ -409,7 +458,7 @@
       els.toggleEdit.classList.toggle("hover:bg-stone-800", state.editMode);
       els.toggleEdit.classList.toggle("text-stone-500", !state.editMode);
 
-      if (!state.restaurants.length) {
+      if (!state.restaurants.length && state.editingId !== "new") {
         els.list.innerHTML = `<p class="text-xs text-stone-400 py-2">未有餐廳，撳編輯新增一間啦。</p>`;
         return;
       }
@@ -423,20 +472,29 @@
             : (blockers.length ? `被 ${blockers.join("、")} 拉黑` : "不符合篩選");
           return `<span title="${escapeHtml(title)}" class="px-2.5 py-1 rounded-full text-xs font-medium ${available
             ? "bg-stone-100 text-stone-700"
-            : "bg-stone-50 text-stone-400 line-through"}">${escapeHtml(r.name)} · ${r.maxCapacity}人</span>`;
+            : "bg-stone-50 text-stone-400 line-through"}">${escapeHtml(r.name)} ·${r.maxCapacity}人</span>`;
         }).join("")}</div>`;
         return;
       }
 
-      els.list.innerHTML = `<div class="space-y-1">${state.restaurants.map((r) => {
+      let html = "";
+      if (state.editingId === "new") {
+        html += renderInlineFormTemplate();
+      }
+
+      html += `<div class="space-y-1">` + state.restaurants.map((r) => {
+        if (state.editingId === r.id) {
+          return renderInlineFormTemplate(r);
+        }
+
         const available = isAvailable(r);
         const blockers = r.blacklistedBy.filter((n) => !state.absent.has(n));
         const reason = !available
           ? (blockers.length ? `被 ${blockers.join("、")} 拉黑` : "不符合篩選")
           : "";
-        const editing = state.editingId === r.id;
+
         return `
-          <div class="flex items-center gap-2 rounded-xl px-2 py-1.5 ${editing ? "bg-orange-50" : available ? "hover:bg-stone-50" : "opacity-60"}">
+          <div class="flex items-center gap-2 rounded-xl px-2 py-1.5 ${available ? "hover:bg-stone-50" : "opacity-60"}">
             <div class="min-w-0 flex-1">
               <p class="text-sm font-medium text-stone-900 truncate">${escapeHtml(r.name)} <span class="text-xs font-normal text-stone-400">${r.maxCapacity}人 · ${r.tags.map(escapeHtml).join("/") || "無標籤"}</span></p>
               <p class="text-[11px] text-stone-400 truncate">${r.blacklistedBy.length ? `黑名單：${r.blacklistedBy.map(escapeHtml).join("、")}` : "無黑名單"}${reason ? ` · ${escapeHtml(reason)}` : ""}</p>
@@ -444,7 +502,9 @@
             <button type="button" data-edit="${escapeHtml(r.id)}" class="text-xs font-semibold text-orange-600 hover:text-orange-700 shrink-0">改</button>
             <button type="button" data-remove="${escapeHtml(r.id)}" class="text-xs font-semibold text-stone-400 hover:text-rose-600 shrink-0">刪</button>
           </div>`;
-      }).join("")}</div>`;
+      }).join("") + `</div>`;
+
+      els.list.innerHTML = html;
     }
 
     function renderPool() {
@@ -515,11 +575,25 @@
         ctx.save();
         ctx.rotate(start + slice / 2);
         ctx.fillStyle = "#1c1917";
-        ctx.font = `700 ${items.length > 6 ? 11 : 13}px 'Noto Sans TC', sans-serif`;
+        
+        // 文字換行優化邏輯
+        const fontSize = items.length > 8 ? 11 : 13;
+        ctx.font = `700 ${fontSize}px 'Noto Sans TC', sans-serif`;
         ctx.textAlign = "right";
         ctx.textBaseline = "middle";
-        const label = item.name.length > 8 ? item.name.slice(0, 8) + "…" : item.name;
-        ctx.fillText(label, radius - 18, 0);
+
+        const text = item.name;
+        const maxLen = items.length > 8 ? 5 : 7;
+        
+        if (text.length > maxLen) {
+          const line1 = text.slice(0, maxLen);
+          const line2 = text.length > maxLen * 2 ? text.slice(maxLen, maxLen * 2 - 1) + "…" : text.slice(maxLen);
+          ctx.fillText(line1, radius - 18, -fontSize * 0.65);
+          ctx.fillText(line2, radius - 18, fontSize * 0.65);
+        } else {
+          ctx.fillText(text, radius - 18, 0);
+        }
+        
         ctx.restore();
       });
 
@@ -530,7 +604,21 @@
       ctx.stroke();
       ctx.restore();
 
-      // outer ring already drawn; hub is the SPIN button overlay
+      // 檢查轉盤指針經過區域，觸發音效與動畫
+      if (state.spinning && items.length > 0) {
+        const currentSector = winnerIndex(items.length, state.rotation);
+        if (currentSector !== state.lastTickSector) {
+          state.lastTickSector = currentSector;
+          sounds.playTick();
+          triggerPointerBounce();
+        }
+      }
+    }
+
+    function triggerPointerBounce() {
+      if (!els.pointer) return;
+      els.pointer.classList.add("tick");
+      setTimeout(() => els.pointer.classList.remove("tick"), 50);
     }
 
     function winnerIndex(itemCount, rotation) {
@@ -547,8 +635,11 @@
       const items = selectedRestaurants();
       if (state.spinning || items.length < 2) return;
 
+      sounds.init();
       state.spinning = true;
+      state.lastTickSector = -1;
       els.spin.disabled = true;
+
       const extraTurns = 5 + Math.random() * 3;
       const target = extraTurns * Math.PI * 2 + Math.random() * Math.PI * 2;
       const start = state.rotation;
@@ -565,6 +656,7 @@
           const winner = items[winnerIndex(items.length, state.rotation)];
           state.spinning = false;
           els.spin.disabled = false;
+          sounds.playWin();
           showResult(winner);
         }
       }
@@ -577,28 +669,38 @@
       els.resultMeta.textContent = `${restaurant.maxCapacity} 人桌 · ${tags}`;
       els.modal.classList.remove("hidden");
       els.modal.classList.add("show", "flex");
-      els.confetti.innerHTML = "";
-      for (let i = 0; i < 24; i++) {
+      
+      // 全螢幕落花 Confetti 效果
+      document.querySelectorAll('.confetti').forEach(el => el.remove());
+      for (let i = 0; i < 40; i++) {
         const bit = document.createElement("span");
         bit.className = "confetti";
-        bit.style.left = `${8 + Math.random() * 84}%`;
-        bit.style.top = `${-10 + Math.random() * 20}px`;
+        bit.style.left = `${Math.random() * 100}%`;
+        bit.style.top = `-20px`;
         bit.style.background = WHEEL_COLORS[i % WHEEL_COLORS.length];
-        bit.style.animationDelay = `${Math.random() * 0.3}s`;
-        els.confetti.appendChild(bit);
+        bit.style.animationDelay = `${Math.random() * 0.4}s`;
+        bit.style.animationDuration = `${1.2 + Math.random() * 1}s`;
+        document.body.appendChild(bit);
       }
     }
 
     function closeModal() {
       els.modal.classList.add("hidden");
       els.modal.classList.remove("show", "flex");
+      document.querySelectorAll('.confetti').forEach(el => el.remove());
+    }
+
+    function closeInlineForm() {
+      state.editingId = null;
+      state.formTags.clear();
+      state.formBlacklist.clear();
+      renderRestaurants();
     }
 
     function render() {
       selectedRestaurants();
       renderColleagues();
       renderFilters();
-      renderFormChips();
       renderRestaurants();
       renderPool();
       const count = selectedRestaurants().length;
@@ -637,6 +739,10 @@
     els.list.addEventListener("click", async (e) => {
       const removeBtn = e.target.closest("[data-remove]");
       const editBtn = e.target.closest("[data-edit]");
+      const formTagBtn = e.target.closest("[data-form-tag]");
+      const formBlBtn = e.target.closest("[data-form-bl]");
+      const cancelBtn = e.target.closest("#cancel-inline-btn");
+
       if (removeBtn) {
         const id = removeBtn.dataset.remove;
         const { error } = await db.from("restaurants").delete().eq("id", id);
@@ -646,14 +752,78 @@
         }
         state.restaurants = state.restaurants.filter((r) => r.id !== id);
         state.selected.delete(id);
-        if (state.editingId === id) resetForm();
+        if (state.editingId === id) closeInlineForm();
         render();
         return;
       }
+
       if (editBtn) {
-        const restaurant = state.restaurants.find((r) => r.id === editBtn.dataset.edit);
-        if (restaurant) fillForm(restaurant);
+        const id = editBtn.dataset.edit;
+        const restaurant = state.restaurants.find((r) => r.id === id);
+        if (restaurant) {
+          state.editingId = id;
+          state.formTags = new Set(restaurant.tags);
+          state.formBlacklist = new Set(restaurant.blacklistedBy);
+          renderRestaurants();
+        }
+        return;
       }
+
+      if (formTagBtn) {
+        const tag = formTagBtn.dataset.formTag;
+        if (state.formTags.has(tag)) state.formTags.delete(tag);
+        else state.formTags.add(tag);
+        renderRestaurants();
+        return;
+      }
+
+      if (formBlBtn) {
+        const name = formBlBtn.dataset.formBl;
+        if (state.formBlacklist.has(name)) state.formBlacklist.delete(name);
+        else state.formBlacklist.add(name);
+        renderRestaurants();
+        return;
+      }
+
+      if (cancelBtn) {
+        closeInlineForm();
+        return;
+      }
+    });
+
+    els.list.addEventListener("submit", async (e) => {
+      if (e.target.id !== "inline-edit-form") return;
+      e.preventDefault();
+
+      const form = e.target;
+      const data = new FormData(form);
+      const name = String(data.get("name") || "").trim();
+      if (!name) return;
+
+      const payload = {
+        name,
+        tags: [...state.formTags],
+        maxCapacity: Number(data.get("maxCapacity")),
+        blacklistedBy: [...state.formBlacklist]
+      };
+      const row = toRow(payload);
+
+      if (state.editingId && state.editingId !== "new") {
+        const { error } = await db.from("restaurants").update(row).eq("id", state.editingId);
+        if (error) {
+          setStatus(`更新失敗：${error.message}`, true);
+          return;
+        }
+      } else if (state.editingId === "new") {
+        const { error } = await db.from("restaurants").insert(row);
+        if (error) {
+          setStatus(`新增失敗：${error.message}`, true);
+          return;
+        }
+      }
+
+      closeInlineForm();
+      await fetchRestaurants();
     });
 
     els.pool.addEventListener("click", (e) => {
@@ -665,71 +835,21 @@
       render();
     });
 
-    els.formTags.addEventListener("click", (e) => {
-      const btn = e.target.closest("[data-form-tag]");
-      if (!btn) return;
-      const tag = btn.dataset.formTag;
-      if (state.formTags.has(tag)) state.formTags.delete(tag);
-      else state.formTags.add(tag);
-      renderFormChips();
-    });
-
-    els.formBlacklist.addEventListener("click", (e) => {
-      const btn = e.target.closest("[data-form-bl]");
-      if (!btn) return;
-      const name = btn.dataset.formBl;
-      if (state.formBlacklist.has(name)) state.formBlacklist.delete(name);
-      else state.formBlacklist.add(name);
-      renderFormChips();
-    });
-
     els.toggleEdit.addEventListener("click", () => {
       state.editMode = !state.editMode;
-      if (!state.editMode) resetForm();
+      if (!state.editMode) closeInlineForm();
       render();
     });
+
     els.toggleForm.addEventListener("click", () => {
-      if (!els.form.classList.contains("hidden") && !state.editingId) {
-        resetForm();
+      if (state.editingId === "new") {
+        closeInlineForm();
         return;
       }
-      state.editingId = null;
+      state.editingId = "new";
       state.formTags.clear();
       state.formBlacklist.clear();
-      els.form.reset();
-      els.form.classList.remove("hidden");
-      if (els.saveForm) els.saveForm.textContent = "儲存";
-      renderFormChips();
-    });
-    els.cancelForm.addEventListener("click", resetForm);
-
-    els.form.addEventListener("submit", async (e) => {
-      e.preventDefault();
-      const data = new FormData(els.form);
-      const name = String(data.get("name") || "").trim();
-      if (!name) return;
-      const payload = {
-        name,
-        tags: [...state.formTags],
-        maxCapacity: Number(data.get("maxCapacity")),
-        blacklistedBy: [...state.formBlacklist]
-      };
-      const row = toRow(payload);
-      if (state.editingId) {
-        const { error } = await db.from("restaurants").update(row).eq("id", state.editingId);
-        if (error) {
-          setStatus(`更新失敗：${error.message}`, true);
-          return;
-        }
-      } else {
-        const { error } = await db.from("restaurants").insert(row);
-        if (error) {
-          setStatus(`新增失敗：${error.message}`, true);
-          return;
-        }
-      }
-      resetForm();
-      await fetchRestaurants();
+      renderRestaurants();
     });
 
     document.getElementById("select-all-btn").addEventListener("click", () => {
